@@ -1,0 +1,708 @@
+ 
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Tap Flyer</title>
+  <style>
+    :root {
+      --bg1:#0b1220;
+      --bg2:#0a2540;
+      --text:#e7eefc;
+      --muted:rgba(231,238,252,.75);
+      --card:rgba(255,255,255,.08);
+      --stroke:rgba(255,255,255,.18);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(1200px 800px at 50% 20%, var(--bg2), var(--bg1));
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      overflow: hidden;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* contenitore fullscreen con safe-area */
+    .wrap {
+      position: fixed;
+      inset: 0;
+      padding:
+        env(safe-area-inset-top)
+        env(safe-area-inset-right)
+        env(safe-area-inset-bottom)
+        env(safe-area-inset-left);
+      display: grid;
+      place-items: center;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* UI overlay */
+    .hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+    .topbar {
+      position: absolute;
+      left: 0; right: 0;
+      top: env(safe-area-inset-top);
+      padding: 14px 14px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      font-weight: 600;
+      letter-spacing: .2px;
+    }
+    .pill small {
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: .3px;
+    }
+
+    .center {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: min(520px, calc(100% - 28px));
+      text-align: center;
+      pointer-events: none;
+    }
+
+    .card {
+      background: rgba(0,0,0,.25);
+      border: 1px solid var(--stroke);
+      border-radius: 22px;
+      padding: 18px 16px 16px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    }
+
+    .title {
+      font-size: 20px;
+      margin: 0 0 6px;
+      font-weight: 800;
+    }
+    .subtitle {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      pointer-events: auto; /* i bottoni sì */
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--stroke);
+      background: rgba(255,255,255,.10);
+      color: var(--text);
+      border-radius: 16px;
+      padding: 12px 14px;
+      font-weight: 800;
+      letter-spacing: .2px;
+      font-size: 14px;
+      min-width: 140px;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    button:active { transform: scale(.98); }
+
+    .hint {
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    /* piccolo help in basso */
+    .bottombar {
+      position: absolute;
+      left: 0; right: 0;
+      bottom: env(safe-area-inset-bottom);
+      padding: 14px;
+      display: flex;
+      justify-content: center;
+    }
+    .toast {
+      pointer-events: none;
+      max-width: min(520px, calc(100% - 28px));
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid var(--stroke);
+      text-align: center;
+      color: var(--muted);
+      font-weight: 600;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <canvas id="c"></canvas>
+  </div>
+
+  <div class="hud">
+    <div class="topbar">
+      <div class="pill"><small>SCORE</small><span id="score">0</span></div>
+      <div class="pill"><small>BEST</small><span id="best">0</span></div>
+    </div>
+
+    <div class="center" id="overlay">
+      <div class="card">
+        <p class="title" id="ovTitle">Tap Flyer</p>
+        <p class="subtitle" id="ovText">Tocca lo schermo per volare tra le colonne. Evita gli impatti e fai più punti possibile.</p>
+        <div class="actions">
+          <button id="btnStart">Gioca</button>
+          <button id="btnMode">Modalità: Normale</button>
+        </div>
+        <div class="hint">Tip: puoi anche premere <b>Spazio</b> su desktop.</div>
+      </div>
+    </div>
+
+    <div class="bottombar">
+      <div class="toast" id="toast">TAP per salto • Doppio TAP: pausa • Trascina in alto/basso: niente (solo tap)</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+
+  const scoreEl = document.getElementById('score');
+  const bestEl  = document.getElementById('best');
+
+  const overlay = document.getElementById('overlay');
+  const ovTitle = document.getElementById('ovTitle');
+  const ovText  = document.getElementById('ovText');
+  const btnStart = document.getElementById('btnStart');
+  const btnMode  = document.getElementById('btnMode');
+  const toast = document.getElementById('toast');
+
+  // ====== Util ======
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand  = (a, b) => a + Math.random() * (b - a);
+
+  function vibrate(ms) {
+    try { if (navigator.vibrate) navigator.vibrate(ms); } catch {}
+  }
+
+  // ====== Layout / DPI ======
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    W = Math.floor(window.innerWidth);
+    H = Math.floor(window.innerHeight);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0); // disegno in px “css”
+  }
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+
+  // ====== Stato ======
+  const BEST_KEY = 'tapflyer_best_v1';
+  let best = Number(localStorage.getItem(BEST_KEY) || 0);
+  bestEl.textContent = best;
+
+  const Modes = [
+    { name: 'Normale', gapMul: 1.00, speedMul: 1.00, gravMul: 1.00 },
+    { name: 'Facile',  gapMul: 1.18, speedMul: 0.92, gravMul: 0.95 },
+    { name: 'Hard',    gapMul: 0.88, speedMul: 1.12, gravMul: 1.05 },
+  ];
+  let modeIndex = 0;
+
+  const Game = {
+    running: false,
+    paused: false,
+    over: false,
+    startedOnce: false,
+    t: 0,
+    score: 0,
+    flash: 0,
+  };
+
+  // Personaggio: pallina “drone”
+  const Bird = {
+    x: 0,
+    y: 0,
+    r: 14,
+    vy: 0,
+    rot: 0
+  };
+
+  // Ostacoli
+  const Pipes = [];
+  let spawnTimer = 0;
+
+  // Parametri scalati sul device
+  function params() {
+    // unità base in funzione dell’altezza
+    const u = Math.max(1, Math.min(1.35, H / 780));
+    const m = Modes[modeIndex];
+
+    return {
+      u,
+      gravity: 1400 * u * m.gravMul,
+      flap: -460 * u,
+      speed: 240 * u * m.speedMul,
+      pipeW: 70 * u,
+      gap: clamp(190 * u * m.gapMul, 150 * u, 260 * u),
+      spawnEvery: 1.28, // sec
+      floorH: 88 * u
+    };
+  }
+
+  function reset() {
+    const p = params();
+    Bird.x = Math.max(90, W * 0.28);
+    Bird.y = H * 0.45;
+    Bird.vy = 0;
+    Bird.rot = 0;
+
+    Pipes.length = 0;
+    spawnTimer = 0;
+
+    Game.t = 0;
+    Game.score = 0;
+    Game.over = false;
+    Game.running = false;
+    Game.paused = false;
+    Game.flash = 0;
+
+    scoreEl.textContent = '0';
+    overlay.style.display = '';
+    ovTitle.textContent = 'Tap Flyer';
+    ovText.textContent = 'Tocca lo schermo per volare tra le colonne. Evita gli impatti e fai più punti possibile.';
+    btnStart.textContent = 'Gioca';
+    toast.textContent = 'TAP per salto • Doppio TAP: pausa • Spazio su desktop';
+  }
+
+  function start() {
+    if (Game.over) return;
+    Game.running = true;
+    Game.startedOnce = true;
+    overlay.style.display = 'none';
+  }
+
+  function gameOver() {
+    if (Game.over) return;
+    Game.over = true;
+    Game.running = false;
+    Game.paused = false;
+    Game.flash = 1;
+
+    vibrate(35);
+
+    if (Game.score > best) {
+      best = Game.score;
+      localStorage.setItem(BEST_KEY, String(best));
+      bestEl.textContent = best;
+    }
+
+    overlay.style.display = '';
+    ovTitle.textContent = 'Fine partita';
+    ovText.textContent = `Punteggio: ${Game.score} • Record: ${best}`;
+    btnStart.textContent = 'Riprova';
+    toast.textContent = 'TAP per ripartire';
+  }
+
+  function togglePause() {
+    flap();
+    return;
+    if (!Game.startedOnce || Game.over) return;
+    Game.paused = !Game.paused;
+    if (Game.paused) {
+      overlay.style.display = '';
+      ovTitle.textContent = 'Pausa';
+      ovText.textContent = 'Doppio tap per riprendere. Tap singolo = salto (quando riparti).';
+      btnStart.textContent = 'Riprendi';
+      toast.textContent = 'In pausa';
+    } else {
+      overlay.style.display = 'none';
+      toast.textContent = 'TAP per salto • Doppio TAP: pausa';
+    }
+  }
+
+  // ====== Input (touch + keyboard) ======
+  let lastTap = 0;
+  function flap() {
+    const p = params();
+    if (Game.over) { reset(); start(); return; }
+    if (!Game.running && !Game.paused) start();
+    if (Game.paused) return;
+
+    Bird.vy = p.flap;
+    vibrate(8);
+  }
+
+  function onTap() {
+    const now = performance.now();
+    const dt = now - lastTap;
+    lastTap = now;
+    if (dt < 260) {
+      // double tap -> pausa
+      togglePause();
+    } else {
+      flap();
+    }
+  }
+
+  window.addEventListener('pointerdown', (e) => {
+    // evita pinch/scroll “strani”
+    e.preventDefault?.();
+    onTap();
+  }, { passive: false });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') { e.preventDefault(); flap(); }
+    if (e.code === 'KeyP')  { e.preventDefault(); togglePause(); }
+  });
+
+  btnStart.addEventListener('click', () => {
+    if (Game.over) { reset(); start(); return; }
+    if (Game.paused) { togglePause(); return; }
+    start();
+    flap();
+  });
+
+  btnMode.addEventListener('click', () => {
+    modeIndex = (modeIndex + 1) % Modes.length;
+    btnMode.textContent = `Modalità: ${Modes[modeIndex].name}`;
+    // se non hai iniziato, reset così aggiorna gap/speed
+    if (!Game.startedOnce || Game.over) reset();
+  });
+  btnMode.textContent = `Modalità: ${Modes[modeIndex].name}`;
+
+  // ====== Ostacoli ======
+  function spawnPipe() {
+    const p = params();
+    const marginTop = 90 * p.u;
+    const marginBottom = p.floorH + 80 * p.u;
+
+    const gap = p.gap;
+    const center = rand(marginTop + gap/2, H - marginBottom - gap/2);
+
+    Pipes.push({
+      x: W + 10,
+      w: p.pipeW,
+      gapY: center,
+      gapH: gap,
+      scored: false
+    });
+  }
+
+  function circleRectCollide(cx, cy, r, rx, ry, rw, rh) {
+    const closestX = clamp(cx, rx, rx + rw);
+    const closestY = clamp(cy, ry, ry + rh);
+    const dx = cx - closestX;
+    const dy = cy - closestY;
+    return (dx*dx + dy*dy) <= r*r;
+  }
+
+  // ====== Disegno ======
+  function drawBackground() {
+    // gradient “cielo”
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0d1b3a');
+    g.addColorStop(1, '#07101f');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // stelline/particelle
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 18; i++) {
+      const x = (i * 97 + (Game.t * 40)) % (W + 120) - 60;
+      const y = (i * 53) % (H * 0.55);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFloor() {
+    const p = params();
+    const y = H - p.floorH;
+
+    const g = ctx.createLinearGradient(0, y, 0, H);
+    g.addColorStop(0, 'rgba(255,255,255,.06)');
+    g.addColorStop(1, 'rgba(255,255,255,.02)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y, W, p.floorH);
+
+    // linee “corsa”
+    ctx.globalAlpha = 0.35;
+    const speed = p.speed;
+    const t = Game.t * speed * 0.35;
+    for (let i = 0; i < 12; i++) {
+      const x = (i * 110 - (t % 110));
+      ctx.fillStyle = 'rgba(255,255,255,.18)';
+      ctx.fillRect(x, y + p.floorH * 0.35, 60, 6);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawPipes() {
+    const p = params();
+    for (const pipe of Pipes) {
+      const x = pipe.x, w = pipe.w;
+      const topH = pipe.gapY - pipe.gapH/2;
+      const botY = pipe.gapY + pipe.gapH/2;
+      const botH = H - p.floorH - botY;
+
+      // colonna top
+      drawPipeRect(x, 0, w, topH);
+      // colonna bottom
+      drawPipeRect(x, botY, w, botH);
+
+      // “bordo” della bocca
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, topH - 8, w, 8);
+      ctx.fillRect(x, botY, w, 8);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawPipeRect(x, y, w, h) {
+    if (h <= 0) return;
+    const r = 14;
+    const rr = Math.min(r, w/2, h/2);
+
+    // gradiente metallico/teal
+    const g = ctx.createLinearGradient(x, y, x + w, y);
+    g.addColorStop(0, 'rgba(46, 240, 255, .28)');
+    g.addColorStop(0.5, 'rgba(46, 240, 255, .12)');
+    g.addColorStop(1, 'rgba(46, 240, 255, .26)');
+
+    ctx.fillStyle = g;
+    roundRect(x, y, w, h, rr);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,.18)';
+    ctx.lineWidth = 2;
+    roundRect(x, y, w, h, rr);
+    ctx.stroke();
+
+    // righe decorative
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    const step = 34;
+    for (let yy = y + 10; yy < y + h - 10; yy += step) {
+      ctx.fillRect(x + 10, yy, w - 20, 3);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBird() {
+    // pallina “drone” con glow
+    ctx.save();
+    ctx.translate(Bird.x, Bird.y);
+
+    // tilt in base alla velocità
+    const targetRot = clamp(Bird.vy / 900, -0.6, 0.9);
+    Bird.rot += (targetRot - Bird.rot) * 0.12;
+    ctx.rotate(Bird.rot);
+
+    // glow
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = 'rgba(255, 210, 90, .9)';
+    ctx.beginPath();
+    ctx.arc(0, 0, Bird.r * 1.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // body
+    const g = ctx.createRadialGradient(-Bird.r*0.2, -Bird.r*0.2, 2, 0, 0, Bird.r*1.3);
+    g.addColorStop(0, 'rgba(255, 225, 140, 1)');
+    g.addColorStop(1, 'rgba(255, 140, 60, 1)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, Bird.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ring
+    ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, Bird.r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // eye
+    ctx.fillStyle = 'rgba(0,0,0,.55)';
+    ctx.beginPath();
+    ctx.arc(Bird.r * 0.35, -Bird.r * 0.15, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // small trail
+    ctx.globalAlpha = 0.25;
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.beginPath();
+    ctx.ellipse(-Bird.r*1.2, 0, Bird.r*0.9, Bird.r*0.45, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawFlash() {
+    if (Game.flash <= 0) return;
+    ctx.globalAlpha = Game.flash * 0.55;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+
+  // ====== Loop ======
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+
+    if (!Game.paused) update(dt);
+    render();
+
+    requestAnimationFrame(frame);
+  }
+
+  function update(dt) {
+    const p = params();
+    Game.t += dt;
+
+    // “idle bob” se non partito
+    if (!Game.running && !Game.over) {
+      Bird.y = H*0.45 + Math.sin(Game.t*3) * 8 * p.u;
+      Bird.rot *= 0.92;
+      Game.flash = Math.max(0, Game.flash - dt * 2.2);
+      return;
+    }
+
+    if (!Game.running) {
+      Game.flash = Math.max(0, Game.flash - dt * 3.0);
+      return;
+    }
+
+    // fisica
+    Bird.vy += p.gravity * dt;
+    Bird.y += Bird.vy * dt;
+
+    // spawn pipe
+    spawnTimer += dt;
+    if (spawnTimer >= p.spawnEvery) {
+      spawnTimer = 0;
+      spawnPipe();
+    }
+
+    // muovi pipe
+    for (const pipe of Pipes) {
+      pipe.x -= p.speed * dt;
+
+      // scoring quando superi il centro della colonna
+      if (!pipe.scored && pipe.x + pipe.w < Bird.x) {
+        pipe.scored = true;
+        Game.score += 1;
+        scoreEl.textContent = Game.score;
+        vibrate(6);
+      }
+    }
+
+    // rimuovi pipe fuori schermo
+    while (Pipes.length && Pipes[0].x + Pipes[0].w < -40) Pipes.shift();
+
+    // collisioni con floor/ceiling
+    const floorY = H - p.floorH;
+    if (Bird.y + Bird.r > floorY) {
+      Bird.y = floorY - Bird.r;
+      gameOver();
+    }
+    if (Bird.y - Bird.r < 0) {
+      Bird.y = Bird.r;
+      Bird.vy = Math.max(Bird.vy, 0);
+    }
+
+    // collisioni con pipe
+    for (const pipe of Pipes) {
+      const x = pipe.x, w = pipe.w;
+      const topH = pipe.gapY - pipe.gapH/2;
+      const botY = pipe.gapY + pipe.gapH/2;
+      const botH = (H - p.floorH) - botY;
+
+      const hitTop = circleRectCollide(Bird.x, Bird.y, Bird.r, x, 0, w, topH);
+      const hitBot = circleRectCollide(Bird.x, Bird.y, Bird.r, x, botY, w, botH);
+      if (hitTop || hitBot) {
+        vibrate(35);
+        gameOver();
+        break;
+      }
+    }
+
+    Game.flash = Math.max(0, Game.flash - dt * 3.0);
+  }
+
+  function render() {
+    drawBackground();
+    drawPipes();
+    drawBird();
+    drawFloor();
+    drawFlash();
+  }
+
+  // Avvio
+  reset();
+  requestAnimationFrame(frame);
+
+  // iOS: evita selezione/scroll
+  document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive:false });
+})();
+</script>
+</body>
+</html>
